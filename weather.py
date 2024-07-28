@@ -1,4 +1,6 @@
+import collections
 from enum import Enum
+import math
 import random
 
 
@@ -8,7 +10,9 @@ class Weather(Enum):
     Bad = 0b10
     Terrible = 0b11
 
+
 MESSAGE_LENGTH = 2
+MESSAGE_COUNT = 4
 
 # The probability of each weather condition appering
 frequencies = {
@@ -28,13 +32,13 @@ corruption_odds = {
 
 
 class Source:
-    def __init__(self):
-        self.weathers = random.choices(
-            list(frequencies.keys()), list(frequencies.values()), k=100
+    def __init__(self, num_messages):
+        self.messages = random.choices(
+            list(frequencies.keys()), list(frequencies.values()), k=num_messages
         )
 
     def _flip_random_bit(number):
-        Weather(number.value ^ 1 << random.randint(0, MESSAGE_LENGTH-1)) 
+        return Weather(number.value ^ 1 << random.randint(0, MESSAGE_LENGTH - 1))
 
     def _corrupt_message(message):
         if random.uniform(0, 1) < corruption_odds[message]:
@@ -46,7 +50,7 @@ class Source:
         reciever.recieve_message(message)
 
     def send_all(self, reciever):
-        for weather in self.weathers:
+        for weather in self.messages:
             Source._send_message(weather, reciever)
 
 
@@ -58,9 +62,54 @@ class Reciever:
         self.messages.append(message)
 
 
+def print_messages(sender, reciever):
+    for a, b in zip(sender.messages, reciever.messages):
+        print(a.value, b.value, end="\n")
+
+
+def calcualte_entropy(probabilties):
+    return -sum(map(lambda p: p * math.log2(p), probabilties))
+
+
+def calculate_frequencies(messages):
+    counter = collections.Counter(messages)
+    num_messages = len(messages)
+    freqs = {k: v / num_messages for k, v in counter.items()}
+    return freqs
+
+
+def construct_joint_prob_dist_table(frequencies, corruption_odds):
+    table = [[0 for _ in frequencies.keys()] for _ in frequencies.keys()]
+    for i, (k, v) in enumerate(frequencies.items()):
+        p_fail = v * corruption_odds[k] * 1 / (MESSAGE_COUNT - 1)
+        p_success = v * (1 - corruption_odds[k])
+        table[i] = [p_fail for _ in table[i]]
+        table[i][i] = p_success
+    
+    return table
+
+def print_table(table):
+    col_names = [f"     X{n}" for n in range(len(table))] + ["     P(X)"]
+    print(*col_names)
+    print("-------"*6)
+    for i, row in enumerate(table):
+        truncated = [format(num, '.5f') for num in row]
+        row_name = f"Y{i}  |"
+        print(row_name, *truncated, format(sum(row), '.5f'))
+    sum_cols =  [ format(sum(x), '.5f') for x in zip(*table) ]
+    print("P(Y)|", *sum_cols)
+    
+
 if __name__ == "__main__":
-    sender = Source()
+    sender = Source(100)
     reciever = Reciever()
     sender.send_all(reciever)
-    for msg in reciever.messages[:10]:
-        print(msg)
+
+    # input_entropy = calcualte_entropy(frequencies.values())
+    # print(f"input entropy: {input_entropy}")
+
+    # output_freq = calculate_frequencies(reciever.messages)
+    # print(f"output frequencies: {output_freq}")
+
+    table = construct_joint_prob_dist_table(frequencies, corruption_odds)
+    print_table(table)
